@@ -210,19 +210,12 @@ const CloudSync = (() => {
   "measurementId": "G-R24Q7E0NRK",
   "databaseURL": "https://whitebricks-c2983-default-rtdb.firebaseio.com"
 };
-        const defaultConfig = {
-  "apiKey": "AIzaSyBOhH_KIj65d6Op0uGK3FolOlNefO4VJrQ",
-  "authDomain": "whitebricks-c2983.firebaseapp.com",
-  "projectId": "whitebricks-c2983",
-  "storageBucket": "whitebricks-c2983.firebasestorage.app",
-  "messagingSenderId": "291854550621",
-  "appId": "1:291854550621:web:556905063938d4f6a7afb4",
-  "measurementId": "G-R24Q7E0NRK",
-  "databaseURL": "https://whitebricks-c2983-default-rtdb.firebaseio.com"
-};
     try {
-      let c = defaultConfig;
-      localStorage.setItem(K+'config', JSON.stringify(c));
+      let c = JSON.parse(localStorage.getItem(K+'config')||'null');
+      if(!c || !c.apiKey) {
+        c = defaultConfig;
+        localStorage.setItem(K+'config', JSON.stringify(c));
+      }
       enabled = true;
       if(el('cloud-config')) el('cloud-config').value = JSON.stringify(c, null, 2);
       bound = localStorage.getItem(K+'bound') || '';
