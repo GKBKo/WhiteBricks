@@ -777,12 +777,116 @@ function tileThumbUrl(entry) {
   if (ytId) return 'https://i.ytimg.com/vi/' + encodeURIComponent(ytId) + '/hqdefault.jpg';
   return '';
 }
+function closeAllTileMenus() {
+  for (const openCard of document.querySelectorAll('.tile-card.menu-open')) {
+    openCard.classList.remove('menu-open');
+    const dd = openCard.querySelector('.tile-menu-dropdown');
+    if (dd) dd.hidden = true;
+    const btn = openCard.querySelector('.tile-menu-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function openQuickCategoryDialog(entry) {
+  const dlg = $('quick-category-dialog');
+  const list = $('quick-category-list');
+  const titleEl = $('quick-category-entry-title');
+  if (!dlg || !list) return;
+  titleEl.textContent = titleOf(entry);
+  list.replaceChildren();
+  const options = ['', ...data.categories];
+  for (const catName of options) {
+    const label = catName ? categoryDisplayName(catName) : '미분류';
+    const optBtn = button(label, () => {
+      const nextEntries = data.entries.map(item => item.id === entry.id ? { ...item, category: catName } : item);
+      if (persist({ ...data, entries: nextEntries })) {
+        render();
+        message('카테고리를 변경했습니다.');
+      }
+      dlg.close();
+    }, 'quick-category-opt');
+    optBtn.setAttribute('aria-pressed', String((entry.category || '') === catName));
+    if ((entry.category || '') === catName) optBtn.append(make('span', '✓'));
+    list.append(optBtn);
+  }
+  dlg.showModal();
+}
+
+function openEntryInNewWindow(entry) {
+  const url = originalUrl(entry);
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  const win = window.open('', '_blank', 'noopener,noreferrer');
+  if (!win) {
+    message('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.', true);
+    return;
+  }
+  const esc = s => String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  win.document.write(
+    '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + esc(titleOf(entry)) + '</title>' +
+    '<style>body{max-width:760px;margin:40px auto;padding:0 20px;font:15px/1.75 Pretendard,-apple-system,sans-serif;color:#111;background:#fff}h1{font-size:24px;margin-bottom:8px}.meta{color:#666;font-size:13px;margin-bottom:24px}pre{white-space:pre-wrap;font:inherit;margin:0 0 20px}.note{padding:14px;border-radius:10px;background:#f5f6f7}</style>' +
+    '</head><body><h1>' + esc(titleOf(entry)) + '</h1><div class="meta">' + esc([entry.category || '미분류', entry.date].filter(Boolean).join(' · ')) + '</div>' +
+    (entry.content ? '<pre>' + esc(entry.content) + '</pre>' : '') +
+    (entry.thought ? '<div class="note"><strong>내 메모</strong><pre>' + esc(entry.thought) + '</pre></div>' : '') +
+    '</body></html>'
+  );
+  win.document.close();
+}
+
+function createTileMenu(card, entry, preview) {
+  const wrap = make('div', undefined, 'tile-menu-wrap');
+  const menuBtn = make('button', undefined, 'tile-menu-btn');
+  menuBtn.type = 'button';
+  menuBtn.setAttribute('aria-label', '게시글 메뉴');
+  menuBtn.setAttribute('aria-expanded', 'false');
+  menuBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+
+  const dropdown = make('div', undefined, 'tile-menu-dropdown');
+  dropdown.hidden = true;
+
+  function addItem(label, handler, cls = '') {
+    const itemBtn = button(label, e => {
+      e.stopPropagation();
+      closeAllTileMenus();
+      handler();
+    }, 'tile-menu-item' + (cls ? ' ' + cls : ''));
+    dropdown.append(itemBtn);
+  }
+
+  if (!preview) {
+    addItem('편집', () => edit(entry));
+    addItem('삭제', () => remove(entry), 'danger');
+    addItem('카테고리 설정', () => openQuickCategoryDialog(entry));
+  }
+  addItem('새창에서 보기', () => openEntryInNewWindow(entry));
+
+  menuBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const willOpen = dropdown.hidden;
+    closeAllTileMenus();
+    if (willOpen) {
+      dropdown.hidden = false;
+      card.classList.add('menu-open');
+      menuBtn.setAttribute('aria-expanded', 'true');
+    }
+  });
+
+  wrap.append(menuBtn, dropdown);
+  return wrap;
+}
+
 function tileCard(entry, preview) {
   const url = originalUrl(entry);
   const postId = xPostId(url) || xPostIn(entry.content);
   const thumbUrl = tileThumbUrl(entry);
+  const card = make('article', undefined, 'tile-card');
+  card.setAttribute('aria-pressed', String(activeId === entry.id));
 
   function openDetail() {
+    closeAllTileMenus();
     activeId = entry.id;
     const records = $('records');
     records.querySelector('[aria-pressed=true]')?.setAttribute('aria-pressed', 'false');
@@ -792,10 +896,7 @@ function tileCard(entry, preview) {
     $('back-list')?.focus();
   }
 
-  // If X post (without local image override), use div container so X iframe is interactive & scrollable, with clickable header/body
   if (postId && !entry.images?.length) {
-    const card = make('article', undefined, 'tile-card');
-    card.setAttribute('aria-pressed', String(activeId === entry.id));
     const xWrap = make('div', undefined, 'tile-x-wrap');
     const embed = make('div', undefined, 'x-preview x-preview-tile');
     embed.id = 'tile-x-' + entry.id;
@@ -808,12 +909,11 @@ function tileCard(entry, preview) {
     const metaText = [entry.category || '미분류', entry.date].filter(Boolean).join(' · ');
     body.append(make('div', metaText, 'tile-meta'));
     bodyBtn.append(body);
-    card.append(xWrap, bodyBtn);
+    card.append(xWrap, bodyBtn, createTileMenu(card, entry, preview));
     return card;
   }
 
-  const card = button('', openDetail, 'tile-card');
-  card.setAttribute('aria-pressed', String(activeId === entry.id));
+  const mainBtn = button('', openDetail, 'tile-card-main');
   const thumb = make('div', undefined, 'tile-thumb');
   const [glyph, style] = tileStyles[entry.type] || ['↗', 'link'];
   if (thumbUrl) {
@@ -834,7 +934,8 @@ function tileCard(entry, preview) {
   body.append(make('div', titleOf(entry), 'tile-title'));
   const metaText = [entry.category || '미분류', entry.date].filter(Boolean).join(' · ');
   body.append(make('div', metaText, 'tile-meta'));
-  card.append(thumb, body);
+  mainBtn.append(thumb, body);
+  card.append(mainBtn, createTileMenu(card, entry, preview));
   return card;
 }
 function showReader(entry, preview, retryFailed = false) {
@@ -1431,3 +1532,19 @@ if($('search-close-btn')) $('search-close-btn').addEventListener('click', () => 
   setupDrag(resizerLeft, 'left');
   setupDrag(resizerRight, 'right');
 })();
+
+// v2.1 타일 점세개 메뉴 바깥 클릭/ESC 닫기 및 빠른 카테고리 다이얼로그 닫기
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tile-menu-wrap')) closeAllTileMenus();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeAllTileMenus();
+});
+if ($('close-quick-category')) {
+  $('close-quick-category').addEventListener('click', () => $('quick-category-dialog')?.close());
+}
+if ($('quick-category-dialog')) {
+  $('quick-category-dialog').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.close();
+  });
+}
