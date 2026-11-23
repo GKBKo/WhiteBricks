@@ -53,7 +53,7 @@ function applyTheme(theme, reloadCards = false) {
     toggle.textContent = theme === 'dark' ? '라이트 모드' : '다크 모드';
   }
   if (reloadCards) {
-    for (const container of [composerPreview,readerPreview,...document.querySelectorAll('.x-preview-feed')]) {
+    for (const container of [composerPreview,readerPreview,...document.querySelectorAll('.x-preview-feed,.x-preview-tile')]) {
       if (container.dataset.postId) showXPost(container,container.dataset.postId,true);
     }
   }
@@ -637,10 +637,19 @@ function navigate(next, shelf = '') {
   }
   render();
 }
+const svgIcons = {
+  all: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>',
+  important: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  uncategorized: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+  sub: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v10a2 2 0 0 0 2 2h10"/></svg>'
+};
 function navButton(label, selected, action, icon, count) {
   const el = button('',action);
-  const glyph = make('span',icon,'nav-icon');
+  const glyph = make('span',undefined,'nav-icon');
   glyph.setAttribute('aria-hidden','true');
+  if (svgIcons[icon]) glyph.innerHTML = svgIcons[icon];
+  else glyph.textContent = icon;
   el.append(glyph,make('span',label));
   if (count !== undefined) el.append(make('span',String(count),'nav-count'));
   el.setAttribute('aria-pressed',String(selected));
@@ -769,7 +778,11 @@ function tileThumbUrl(entry) {
   return '';
 }
 function tileCard(entry, preview) {
-  const card = button('', () => {
+  const url = originalUrl(entry);
+  const postId = xPostId(url) || xPostIn(entry.content);
+  const thumbUrl = tileThumbUrl(entry);
+
+  function openDetail() {
     activeId = entry.id;
     const records = $('records');
     records.querySelector('[aria-pressed=true]')?.setAttribute('aria-pressed', 'false');
@@ -777,10 +790,31 @@ function tileCard(entry, preview) {
     shell.dataset.detail = 'true';
     showReader(entry, preview, true);
     $('back-list')?.focus();
-  }, 'tile-card');
+  }
+
+  // If X post (without local image override), use div container so X iframe is interactive & scrollable, with clickable header/body
+  if (postId && !entry.images?.length) {
+    const card = make('article', undefined, 'tile-card');
+    card.setAttribute('aria-pressed', String(activeId === entry.id));
+    const xWrap = make('div', undefined, 'tile-x-wrap');
+    const embed = make('div', undefined, 'x-preview x-preview-tile');
+    embed.id = 'tile-x-' + entry.id;
+    xWrap.append(embed);
+    showXPost(embed, postId);
+    const bodyBtn = button('', openDetail, 'tile-card-head');
+    const body = make('div', undefined, 'tile-body');
+    body.style.padding = '0';
+    body.append(make('div', (entry.priority === '핵심' ? '★ ' : '') + titleOf(entry), 'tile-title'));
+    const metaText = [entry.category || '미분류', entry.date].filter(Boolean).join(' · ');
+    body.append(make('div', metaText, 'tile-meta'));
+    bodyBtn.append(body);
+    card.append(xWrap, bodyBtn);
+    return card;
+  }
+
+  const card = button('', openDetail, 'tile-card');
   card.setAttribute('aria-pressed', String(activeId === entry.id));
   const thumb = make('div', undefined, 'tile-thumb');
-  const thumbUrl = tileThumbUrl(entry);
   const [glyph, style] = tileStyles[entry.type] || ['↗', 'link'];
   if (thumbUrl) {
     const img = make('img');
@@ -864,7 +898,7 @@ function render() {
   $('today').textContent = dateLabel(now);
   $('view-title').textContent = category || headings[view];
   if($('mobile-current-category')) $('mobile-current-category').textContent = category || headings[view];
-  $('views').replaceChildren(...Object.entries(headings).map(([name,label]) => navButton(label, view === name,() => navigate(name),{all:'▤',important:'☆',uncategorized:'□'}[name])));
+  $('views').replaceChildren(...Object.entries(headings).map(([name,label]) => navButton(label, view === name,() => navigate(name),name)));
   const counts = new Map();
   for (const entry of data.entries) {
     if (entry.category) {
@@ -878,7 +912,7 @@ function render() {
   $('shelves').replaceChildren(...data.categories.map(name => {
     const isSub = name.includes('/');
     const displayLabel = isSub ? name.split('/').slice(1).join('/') : name;
-    const btn = navButton(displayLabel, category === name, () => navigate('category', name), isSub ? '└' : '📁', counts.get(name) || 0);
+    const btn = navButton(displayLabel, category === name, () => navigate('category', name), isSub ? 'sub' : 'folder', counts.get(name) || 0);
     if (isSub) btn.classList.add('sub-category');
     return btn;
   }));
