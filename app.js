@@ -30,8 +30,17 @@ let activeId = null;
 let draftImages = [];
 let photoProcessing = false;
 const listModeKey = 'reading-library.list-mode';
+const tileColsKey = 'reading-library.tile-cols';
 let listMode = 'preview';
-try { listMode = localStorage.getItem(listModeKey) === 'title' ? 'title' : 'preview'; } catch {}
+try {
+  const savedMode = localStorage.getItem(listModeKey);
+  if (['title', 'preview', 'tile'].includes(savedMode)) listMode = savedMode;
+} catch {}
+let tileCols = 3;
+try {
+  const savedCols = parseInt(localStorage.getItem(tileColsKey), 10);
+  if (Number.isFinite(savedCols) && savedCols >= 1 && savedCols <= 10) tileCols = savedCols;
+} catch {}
 const shell = document.querySelector('.shell');
 const themeKey = 'reading-library.theme';
 const mobileLayout = matchMedia('(max-width: 790px)');
@@ -753,6 +762,47 @@ function entryRow(entry, preview) {
   }
   return item;
 }
+function tileThumbUrl(entry) {
+  if (entry.images?.length) return entry.images[0];
+  const ytId = sourceUrls(entry).map(youtubeVideoId).find(Boolean);
+  if (ytId) return 'https://i.ytimg.com/vi/' + encodeURIComponent(ytId) + '/hqdefault.jpg';
+  return '';
+}
+function tileCard(entry, preview) {
+  const card = button('', () => {
+    activeId = entry.id;
+    const records = $('records');
+    records.querySelector('[aria-pressed=true]')?.setAttribute('aria-pressed', 'false');
+    card.setAttribute('aria-pressed', 'true');
+    shell.dataset.detail = 'true';
+    showReader(entry, preview, true);
+    $('back-list')?.focus();
+  }, 'tile-card');
+  card.setAttribute('aria-pressed', String(activeId === entry.id));
+  const thumb = make('div', undefined, 'tile-thumb');
+  const thumbUrl = tileThumbUrl(entry);
+  const [glyph, style] = tileStyles[entry.type] || ['↗', 'link'];
+  if (thumbUrl) {
+    const img = make('img');
+    img.src = thumbUrl;
+    img.alt = titleOf(entry);
+    img.loading = 'lazy';
+    img.onerror = () => {
+      img.remove();
+      thumb.prepend(make('span', glyph, 'tile-thumb-badge ' + style));
+    };
+    thumb.append(img);
+  } else {
+    thumb.append(make('span', glyph, 'tile-thumb-badge ' + style));
+  }
+  if (entry.priority === '핵심') thumb.append(make('span', '★', 'tile-star'));
+  const body = make('div', undefined, 'tile-body');
+  body.append(make('div', titleOf(entry), 'tile-title'));
+  const metaText = [entry.category || '미분류', entry.date].filter(Boolean).join(' · ');
+  body.append(make('div', metaText, 'tile-meta'));
+  card.append(thumb, body);
+  return card;
+}
 function showReader(entry, preview, retryFailed = false) {
   const actions = $('reader-actions');
   const article = $('reader-content');
@@ -837,8 +887,11 @@ function render() {
     tab.setAttribute('aria-pressed',String(type === value));
     return tab;
   }));
+  shell.dataset.listMode = listMode;
+  document.documentElement.style.setProperty('--tile-cols', String(tileCols));
   $('mode-title').setAttribute('aria-pressed',String(listMode === 'title'));
   $('mode-preview').setAttribute('aria-pressed',String(listMode === 'preview'));
+  if ($('mode-tile')) $('mode-tile').setAttribute('aria-pressed',String(listMode === 'tile'));
   const query = $('search').value.trim().toLocaleLowerCase();
   const date = $('filter-date').value;
   const priority = $('filter-priority').value;
@@ -872,25 +925,87 @@ function render() {
   }
   if (!rows.some(entry => entry.id === activeId)) activeId = rows[0].id;
   showReader(rows.find(entry => entry.id === activeId),false);
-  let last = '';
-  for (const entry of rows) {
-    if (entry.date !== last) {
-      const heading = make('h2',dateLabel(entry.date),'group-title');
-      heading.append(make('span',entry.date));
-      records.append(heading);
-      last = entry.date;
+  if (listMode === 'tile') {
+    const grid = make('div', undefined, 'tile-grid');
+    for (const entry of rows) grid.append(tileCard(entry, false));
+    records.append(grid);
+  } else {
+    let last = '';
+    for (const entry of rows) {
+      if (entry.date !== last) {
+        const heading = make('h2',dateLabel(entry.date),'group-title');
+        heading.append(make('span',entry.date));
+        records.append(heading);
+        last = entry.date;
+      }
+      records.append(entryRow(entry,false));
     }
-    records.append(entryRow(entry,false));
   }
 }
 
-for (const [mode,id] of [['title','mode-title'],['preview','mode-preview']]) {
-  $(id).addEventListener('click',() => {
+for (const [mode,id] of [['title','mode-title'],['preview','mode-preview'],['tile','mode-tile']]) {
+  const btn = $(id);
+  if (!btn) continue;
+  btn.addEventListener('click',() => {
     listMode = mode;
+    if (mode === 'tile') shell.dataset.detail = 'false';
     try { localStorage.setItem(listModeKey,mode); } catch {}
     render();
   });
 }
+
+// v1.9 타일 열 개수 설정 팝오버
+(() => {
+  const settingsBtn = $('tile-settings-btn');
+  const popover = $('tile-settings-popover');
+  const colsInput = $('tile-cols-input');
+  if (!settingsBtn || !popover || !colsInput) return;
+
+  function syncColsUI() {
+    colsInput.value = String(tileCols);
+    document.documentElement.style.setProperty('--tile-cols', String(tileCols));
+    for (const btn of popover.querySelectorAll('.tile-preset')) {
+      btn.setAttribute('aria-pressed', String(Number(btn.dataset.cols) === tileCols));
+    }
+  }
+
+  function setTileCols(val) {
+    const num = Math.max(1, Math.min(10, parseInt(val, 10) || 3));
+    tileCols = num;
+    try { localStorage.setItem(tileColsKey, String(tileCols)); } catch {}
+    syncColsUI();
+  }
+
+  syncColsUI();
+
+  settingsBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const willOpen = popover.hidden;
+    popover.hidden = !willOpen;
+    settingsBtn.setAttribute('aria-expanded', String(willOpen));
+    if (willOpen) syncColsUI();
+  });
+
+  colsInput.addEventListener('input', () => setTileCols(colsInput.value));
+  for (const btn of popover.querySelectorAll('.tile-preset')) {
+    btn.addEventListener('click', () => {
+      setTileCols(btn.dataset.cols);
+      if (listMode !== 'tile') {
+        listMode = 'tile';
+        shell.dataset.detail = 'false';
+        try { localStorage.setItem(listModeKey, 'tile'); } catch {}
+        render();
+      }
+    });
+  }
+
+  document.addEventListener('click', e => {
+    if (!popover.hidden && !popover.contains(e.target) && e.target !== settingsBtn) {
+      popover.hidden = true;
+      settingsBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+})();
 form.addEventListener('submit',event => {
   event.preventDefault();
   const get = name => fields[name].value.trim();
