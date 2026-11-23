@@ -211,11 +211,8 @@ const CloudSync = (() => {
   "databaseURL": "https://whitebricks-c2983-default-rtdb.firebaseio.com"
 };
     try {
-      let c = JSON.parse(localStorage.getItem(K+'config')||'null');
-      if(!c || !c.apiKey) {
-        c = defaultConfig;
-        localStorage.setItem(K+'config', JSON.stringify(c));
-      }
+      let c = defaultConfig;
+      localStorage.setItem(K+'config', JSON.stringify(c));
       enabled = true;
       if(el('cloud-config')) el('cloud-config').value = JSON.stringify(c, null, 2);
       bound = localStorage.getItem(K+'bound') || '';

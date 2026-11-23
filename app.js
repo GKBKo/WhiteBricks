@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const types = ['X', '뉴스', '내 생각', '기타 링크'];
 const priorities = ['핵심', '참고', '미분류'];
 const defaultCategories = ['AI 인프라', '거시경제', '기업', '일상'];
-const headings = {today:'오늘 읽은 것', all:'전체 기록', important:'핵심 자료', uncategorized:'미분류 기록'};
+const headings = {all:'전체 기록', important:'중요', uncategorized:'미분류 기록'};
 const key = 'reading-library.v1';
 const form = $('composer');
 const fields = form.elements;
@@ -22,7 +22,7 @@ let defaultEntries = [
 ];
 let defaultCategoriesWithUser = ['AI 인프라', '거시경제', '기업', '일상', 'Boyage', '생활팁'];
 let data = {entries:[], categories:defaultCategoriesWithUser};
-let view = 'today';
+let view = 'all';
 let category = '';
 let type = '';
 let editId = null;
@@ -162,10 +162,10 @@ function withoutOriginalLink(entry, text) {
 
 function validate(backup) {
   if (!Array.isArray(backup?.entries) || !Array.isArray(backup?.categories)) throw Error('지원되는 백업 형식이 아닙니다.');
-  const limits = {id:100,title:240,content:50000,url:4000,source:160,thought:50000,category:24,created:40};
+  const limits = {id:100,title:240,content:50000,url:4000,source:160,thought:50000,category:60,created:40};
   const ids = new Set();
   const categories = new Set(backup.categories);
-  if ([...categories].some(value => typeof value !== 'string' || !value.trim() || value.length > 24)) throw Error('카테고리 형식이 올바르지 않습니다.');
+  if ([...categories].some(value => typeof value !== 'string' || !value.trim() || value.length > 60)) throw Error('카테고리 형식이 올바르지 않습니다.');
   const entries = backup.entries.map(entry => {
     const images = entry?.images ?? [];
     if (!entry || Object.keys(limits).some(key => typeof entry[key] !== 'string' || entry[key].length > limits[key]) ||
@@ -525,10 +525,28 @@ function resetComposer() {
   $('composer-label').textContent = '빠른 저장';
   $('save').textContent = '기록 저장';
 }
+function categoryDisplayName(name) {
+  if (!name.includes('/')) return name;
+  const parts = name.split('/');
+  return '  '.repeat(parts.length - 1) + '└ ' + parts[parts.length - 1];
+}
 function syncCategories() {
   const current = fields.category.value;
-  fields.category.replaceChildren(new Option('미분류',''), ...data.categories.map(name => new Option(name,name)));
+  fields.category.replaceChildren(
+    new Option('미분류',''),
+    ...data.categories.map(name => new Option(categoryDisplayName(name), name))
+  );
   fields.category.value = data.categories.includes(current) ? current : '';
+  const parentSelect = $('parent-category');
+  if (parentSelect) {
+    const prevParent = parentSelect.value;
+    const topFolders = data.categories.filter(name => !name.includes('/'));
+    parentSelect.replaceChildren(
+      new Option('최상위 폴더', ''),
+      ...topFolders.map(name => new Option(name + ' (하위 폴더로 추가)', name))
+    );
+    parentSelect.value = topFolders.includes(prevParent) ? prevParent : '';
+  }
 }
 function categoryStatus(text,error = false) {
   const status = $('category-status');
@@ -545,9 +563,11 @@ function renderCategoryManager() {
     return;
   }
   data.categories.forEach((name,index) => {
-    const row = make('div',undefined,'category-manage-row');
+    const isSub = name.includes('/');
+    const row = make('div',undefined,'category-manage-row' + (isSub ? ' sub-row' : ''));
     const label = make('div',undefined,'category-manage-name');
-    label.append(document.createTextNode(name),make('span',(counts.get(name) || 0) + '건','category-manage-count'));
+    const displayLabel = isSub ? '└ ' + name.split('/').slice(1).join('/') : name;
+    label.append(document.createTextNode(displayLabel),make('span',(counts.get(name) || 0) + '건','category-manage-count'));
     const actions = make('div',undefined,'category-manage-actions');
     const up = button('↑',() => moveCategory(index,-1),'outline');
     up.setAttribute('aria-label',name + ' 위로 이동');
@@ -582,11 +602,12 @@ function confirmCategoryDelete(name) {
   $('category-delete-dialog').showModal();
 }
 function deleteCategory(name) {
-  const categories = data.categories.filter(item => item !== name);
-  const entries = data.entries.map(entry => entry.category === name ? {...entry,category:''} : entry);
+  const prefix = name + '/';
+  const categories = data.categories.filter(item => item !== name && !item.startsWith(prefix));
+  const entries = data.entries.map(entry => (entry.category === name || entry.category.startsWith(prefix)) ? {...entry,category:''} : entry);
   if (!persist({...data,categories,entries})) return;
   syncCategories();
-  if (category === name) navigate('today');
+  if (category === name || category.startsWith(prefix)) navigate('all');
   else render();
   renderCategoryManager();
   categoryStatus('카테고리를 삭제했습니다. 연결된 기록은 미분류로 이동했습니다.');
@@ -792,10 +813,25 @@ function render() {
   $('today').dateTime = now;
   $('today').textContent = dateLabel(now);
   $('view-title').textContent = category || headings[view];
-  $('views').replaceChildren(...Object.entries(headings).map(([name,label]) => navButton(label, view === name,() => navigate(name),{today:'◷',all:'▤',important:'☆',uncategorized:'□'}[name])));
+  if($('mobile-current-category')) $('mobile-current-category').textContent = category || headings[view];
+  $('views').replaceChildren(...Object.entries(headings).map(([name,label]) => navButton(label, view === name,() => navigate(name),{all:'▤',important:'☆',uncategorized:'□'}[name])));
   const counts = new Map();
-  for (const entry of data.entries) counts.set(entry.category,(counts.get(entry.category) || 0) + 1);
-  $('shelves').replaceChildren(...data.categories.map(name => navButton(name,category === name,() => navigate('category',name),'▱',counts.get(name) || 0)));
+  for (const entry of data.entries) {
+    if (entry.category) {
+      counts.set(entry.category, (counts.get(entry.category) || 0) + 1);
+      if (entry.category.includes('/')) {
+        const parent = entry.category.split('/')[0];
+        counts.set(parent, (counts.get(parent) || 0) + 1);
+      }
+    }
+  }
+  $('shelves').replaceChildren(...data.categories.map(name => {
+    const isSub = name.includes('/');
+    const displayLabel = isSub ? name.split('/').slice(1).join('/') : name;
+    const btn = navButton(displayLabel, category === name, () => navigate('category', name), isSub ? '└' : '📁', counts.get(name) || 0);
+    if (isSub) btn.classList.add('sub-category');
+    return btn;
+  }));
   $('types').replaceChildren(...['',...types].map(value => {
     const tab = button(value || '전체',() => {type = value; render(); $('types').querySelector('[aria-pressed=true]').focus();},'tab');
     tab.setAttribute('aria-pressed',String(type === value));
@@ -809,19 +845,18 @@ function render() {
   $('clear').hidden = !(query || date || priority || type);
   const rows = data.entries.filter(entry => {
     if (date && entry.date !== date) return false;
-    if (view === 'today' && !date && !query && entry.date !== now) return false;
     if (view === 'important' && entry.priority !== '핵심') return false;
     if (view === 'uncategorized' && entry.category) return false;
-    if (category && entry.category !== category) return false;
+    if (category && entry.category !== category && !entry.category.startsWith(category + '/')) return false;
     if (priority && entry.priority !== priority) return false;
     if (type && entry.type !== type) return false;
     return !query || [entry.title,entry.content,entry.thought,entry.source,entry.url,entry.category].some(value => value.toLocaleLowerCase().includes(query));
   }).sort((a,b) => b.date.localeCompare(a.date) || b.created.localeCompare(a.created));
   const records = $('records');
-  const count = make('p',rows.length + '건의 기록' + (query && view === 'today' && !date ? ' · 전체 날짜 검색' : ''),'result');
+  const count = make('p',rows.length + '건의 기록','result');
   records.replaceChildren(count);
   if (!rows.length) {
-    const showExamples = !data.entries.length && view === 'today' && !query && !date && !priority && !type;
+    const showExamples = !data.entries.length && view === 'all' && !query && !date && !priority && !type;
     if (showExamples) {
       if (!examples.some(entry => entry.id === activeId)) activeId = examples[0].id;
       records.append(make('h2','예시 기록','group-title'),...examples.map(entry => entryRow(entry,true)));
@@ -907,9 +942,8 @@ form.addEventListener('submit',event => {
   }
   const entries = previous ? data.entries.map(item => item.id === entry.id ? entry : item) : [...data.entries,entry];
   if (persist({...data,entries})) {
-    if (!previous && (entry.date !== today() || view !== 'today' || $('search').value || $('filter-priority').value || type || $('filter-date').value)) {
-      navigate(entry.date === today() ? 'today' : 'all');
-      if (entry.date !== today()) $('filter-date').value = entry.date;
+    if (!previous && (view !== 'all' || $('search').value || $('filter-priority').value || type || $('filter-date').value)) {
+      navigate('all');
     }
     const postId = xPostId(originalUrl(entry)) || xPostIn(entry.content);
     keepLoadedXPost(postId);
@@ -1020,19 +1054,41 @@ $('back-list').addEventListener('click',() => {
 $('category-form').addEventListener('submit',event => {
   event.preventDefault();
   const input = $('new-category');
-  const name = input.value.trim();
-  if (!name) return;
+  const rawName = input.value.trim().replace(/\//g, '');
+  if (!rawName) return;
+  const parent = $('parent-category') ? $('parent-category').value : '';
+  const name = parent ? parent + '/' + rawName : rawName;
+  if (name.length > 60) {
+    categoryStatus('폴더 이름이 너무 깁니다.', true);
+    return;
+  }
   if (data.categories.includes(name)) {
     categoryStatus('이미 있는 카테고리입니다.',true);
     return;
   }
-  if (persist({...data,categories:[...data.categories,name]})) {
+  let nextCategories = [...data.categories];
+  if (parent) {
+    // Insert right after parent and its existing children
+    let insertIdx = nextCategories.indexOf(parent);
+    if (insertIdx !== -1) {
+      insertIdx++;
+      while (insertIdx < nextCategories.length && nextCategories[insertIdx].startsWith(parent + '/')) {
+        insertIdx++;
+      }
+      nextCategories.splice(insertIdx, 0, name);
+    } else {
+      nextCategories.push(name);
+    }
+  } else {
+    nextCategories.push(name);
+  }
+  if (persist({...data,categories:nextCategories})) {
     input.value = '';
     syncCategories();
     if (!editId) fields.category.value = name;
     render();
     renderCategoryManager();
-    categoryStatus('카테고리를 추가했습니다.');
+    categoryStatus(parent ? '하위 폴더를 추가했습니다.' : '카테고리를 추가했습니다.');
   }
 });
 $('manage-categories').addEventListener('click',() => {
@@ -1133,3 +1189,96 @@ DriveSync.init({
 });
 
 CloudSync.init({get:()=>data,id:newId,validate,commit(next){if(!persist(next,true))return false;syncCategories();render();return true;}});
+
+// 돋보기 검색 토글 기능
+const searchBoxContainer = $('search-box-container');
+const topDefaultActions = $('top-default-actions');
+const searchInput = $('search');
+
+function toggleSearch(show) {
+  if(searchBoxContainer && topDefaultActions) {
+    if(show) {
+      searchBoxContainer.classList.add('active');
+      topDefaultActions.classList.add('searching');
+      searchInput.focus();
+    } else {
+      searchBoxContainer.classList.remove('active');
+      topDefaultActions.classList.remove('searching');
+      searchInput.value = '';
+      render();
+    }
+  }
+}
+
+if($('mobile-search-btn')) $('mobile-search-btn').addEventListener('click', () => toggleSearch(true));
+if($('desktop-search-btn')) $('desktop-search-btn').addEventListener('click', () => toggleSearch(true));
+if($('search-close-btn')) $('search-close-btn').addEventListener('click', () => toggleSearch(false));
+
+// v1.7 좌우 세로선 드래그 너비 조절 및 마지막 설정값 자동 저장/복원
+(() => {
+  const widthKey = 'reading-library.pane-widths';
+  const root = document.documentElement;
+  const resizerLeft = $('resizer-left');
+  const resizerRight = $('resizer-right');
+
+  let widths = { sidebarW: 228, listW: 420 };
+  try {
+    const saved = JSON.parse(localStorage.getItem(widthKey) || 'null');
+    if (saved && Number.isFinite(saved.sidebarW) && Number.isFinite(saved.listW)) {
+      widths = saved;
+    }
+  } catch {}
+
+  function applyWidths() {
+    root.style.setProperty('--sidebar-w', widths.sidebarW + 'px');
+    root.style.setProperty('--list-w', widths.listW + 'px');
+  }
+
+  function saveWidths() {
+    try { localStorage.setItem(widthKey, JSON.stringify(widths)); } catch {}
+  }
+
+  applyWidths();
+
+  function setupDrag(resizer, type) {
+    if (!resizer) return;
+    resizer.addEventListener('pointerdown', e => {
+      if (window.innerWidth <= 790) return;
+      e.preventDefault();
+      resizer.setPointerCapture(e.pointerId);
+      resizer.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      const startX = e.clientX;
+      const startSidebarW = widths.sidebarW;
+      const startListW = widths.listW;
+
+      function onMove(ev) {
+        const dx = ev.clientX - startX;
+        if (type === 'left') {
+          widths.sidebarW = Math.max(160, Math.min(460, Math.round(startSidebarW + dx)));
+        } else {
+          const maxListW = Math.max(260, window.innerWidth - widths.sidebarW - 280);
+          widths.listW = Math.max(240, Math.min(maxListW, Math.round(startListW + dx)));
+        }
+        applyWidths();
+      }
+
+      function onUp(ev) {
+        resizer.releasePointerCapture(ev.pointerId);
+        resizer.classList.remove('dragging');
+        document.body.style.cursor = '';
+        resizer.removeEventListener('pointermove', onMove);
+        resizer.removeEventListener('pointerup', onUp);
+        resizer.removeEventListener('pointercancel', onUp);
+        saveWidths();
+      }
+
+      resizer.addEventListener('pointermove', onMove);
+      resizer.addEventListener('pointerup', onUp);
+      resizer.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  setupDrag(resizerLeft, 'left');
+  setupDrag(resizerRight, 'right');
+})();
