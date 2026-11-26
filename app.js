@@ -995,8 +995,10 @@ function showReader(entry, preview, retryFailed = false) {
 }
 function render() {
   const now = today();
-  $('today').dateTime = now;
-  $('today').textContent = dateLabel(now);
+  if ($('today')) {
+    $('today').dateTime = now;
+    $('today').textContent = dateLabel(now);
+  }
   $('view-title').textContent = category || headings[view];
   if($('mobile-current-category')) $('mobile-current-category').textContent = category || headings[view];
   $('views').replaceChildren(...Object.entries(headings).map(([name,label]) => navButton(label, view === name,() => navigate(name),name)));
@@ -1017,11 +1019,13 @@ function render() {
     if (isSub) btn.classList.add('sub-category');
     return btn;
   }));
-  $('types').replaceChildren(...['',...types].map(value => {
-    const tab = button(value || '전체',() => {type = value; render(); $('types').querySelector('[aria-pressed=true]').focus();},'tab');
-    tab.setAttribute('aria-pressed',String(type === value));
-    return tab;
-  }));
+  if ($('types')) {
+    $('types').replaceChildren(...['',...types].map(value => {
+      const tab = button(value || '전체',() => {type = value; render(); $('types').querySelector('[aria-pressed=true]').focus();},'tab');
+      tab.setAttribute('aria-pressed',String(type === value));
+      return tab;
+    }));
+  }
   shell.dataset.listMode = listMode;
   document.documentElement.style.setProperty('--tile-cols', String(tileCols));
   $('mode-title').setAttribute('aria-pressed',String(listMode === 'title'));
