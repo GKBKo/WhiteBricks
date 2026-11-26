@@ -17,7 +17,7 @@
 <header class="mobile-bar">
 <div class="mobile-bar-left">
 <button class="quiet icon-btn-inline" id="shelf-menu" type="button" aria-controls="shelf-panel" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>서가</span></button>
-<span class="app-version">v2.4</span>
+<span class="app-version">v2.5</span>
 <span id="mobile-current-category" class="mobile-current-category">전체 기록</span>
 </div>
 <div class="mobile-bar-right">
@@ -26,7 +26,7 @@
 </header>
 <button id="shelf-shade" class="shelf-shade" type="button" aria-label="서가 메뉴 닫기" hidden></button>
 <aside id="shelf-panel" class="sidebar" aria-label="서가 메뉴">
-<div class="brand"><svg class="brand-logo" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect width="36" height="36" rx="10" fill="currentColor"/><rect x="7" y="9" width="13" height="4.5" rx="1.5" fill="var(--brand-fg)"/><rect x="22" y="9" width="7" height="4.5" rx="1.5" fill="var(--brand-fg)" fill-opacity=".45"/><rect x="7" y="15.75" width="7" height="4.5" rx="1.5" fill="var(--brand-fg)" fill-opacity=".45"/><rect x="16" y="15.75" width="13" height="4.5" rx="1.5" fill="var(--brand-fg)"/><rect x="7" y="22.5" width="13" height="4.5" rx="1.5" fill="var(--brand-fg)"/><rect x="22" y="22.5" width="7" height="4.5" rx="1.5" fill="#0095f6"/></svg><div class="brand-text"><div class="brand-title-row"><span>WhiteBricks</span><span class="app-version">v2.4</span></div><small>READING ARCHIVE</small></div></div>
+<div class="brand"><svg class="brand-logo" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect width="36" height="36" rx="10" fill="currentColor"/><rect x="7" y="9" width="13" height="4.5" rx="1.5" fill="var(--brand-fg)"/><rect x="22" y="9" width="7" height="4.5" rx="1.5" fill="var(--brand-fg)" fill-opacity=".45"/><rect x="7" y="15.75" width="7" height="4.5" rx="1.5" fill="var(--brand-fg)" fill-opacity=".45"/><rect x="16" y="15.75" width="13" height="4.5" rx="1.5" fill="var(--brand-fg)"/><rect x="7" y="22.5" width="13" height="4.5" rx="1.5" fill="var(--brand-fg)"/><rect x="22" y="22.5" width="7" height="4.5" rx="1.5" fill="#0095f6"/></svg><div class="brand-text"><div class="brand-title-row"><span>WhiteBricks</span><span class="app-version">v2.5</span></div><small>READING ARCHIVE</small></div></div>
 <nav class="nav" id="views" aria-label="기록 보기"></nav>
 <section class="shelf-section"><div class="category-heading"><h2>주제별 서가</h2><button class="quiet" id="manage-categories" type="button">카테고리 관리</button></div><nav class="nav" id="shelves" aria-label="카테고리"></nav></section>
 <div class="sidebar-settings">
@@ -56,9 +56,9 @@
 <p>최초 연결 전 JSON 백업을 받아 두세요. 기존 Drive 자료는 기존 서가에서 불러온 뒤 백업 가져오기로 옮길 수 있습니다. 기존 Drive 파일은 자동 삭제하지 않습니다.</p>
 </details></details>
 <details class="drive-panel" id="drive-panel">
-<summary>기존 Google Drive 동기화</summary>
+<summary>Google Drive 자동 저장 (Userdata)</summary>
 <p>저장 위치 <a href="https://drive.google.com/open?id=1mXCJzRYkHHV2Og33B3WEAOntP3VLyqjK&amp;usp=drive_fs" target="_blank" rel="noopener noreferrer">지정 폴더 ↗</a></p>
-<p id="drive-status" role="status" aria-live="polite">연결하면 이 기기의 기록과 Drive 기록을 합칩니다.</p>
+<p id="drive-status" role="status" aria-live="polite">연결하면 모든 기록을 Google Drive의 A_WhiteBircks/Userdata/ 카테고리별 폴더에 yymmdd_제목.md로 자동 저장합니다.</p>
 <details class="drive-log" id="drive-log-panel">
 <summary>연결 로그</summary>
 <div class="drive-log-actions"><button type="button" class="outline" id="drive-log-copy">로그 복사</button><button type="button" class="quiet" id="drive-log-clear">로그 지우기</button></div>
@@ -71,7 +71,7 @@
 <button class="primary" id="drive-connect">Google Drive 연결</button>
 </form>
 <p class="drive-config-note">세 값은 입력할 때마다 이 브라우저에 자동 저장됩니다. PC와 모바일에서는 각각 한 번 입력해 주세요. 연결 로그와 Drive 기록에는 설정값을 넣지 않습니다.</p>
-<div class="drive-actions"><button type="button" class="outline" id="drive-now" disabled>지금 동기화</button><button type="button" class="quiet" id="drive-disconnect" disabled>연결 끊기</button></div>
+<div class="drive-actions"><button type="button" class="outline" id="drive-now" disabled>지금 전체 저장</button><button type="button" class="quiet" id="drive-disconnect" disabled>연결 끊기</button></div>
 <details class="drive-help"><summary>처음 한 번 설정하는 방법</summary>
 <ol>
 <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">Google Cloud Console</a>에서 한 프로젝트에 <b>Google Drive API</b>와 <b>Google Picker API</b>를 사용 설정합니다.</li>
@@ -168,8 +168,8 @@
 <dialog id="category-delete-dialog"><form method="dialog"><h2>카테고리 삭제</h2><p id="category-delete-copy"></p><button class="outline" value="cancel" autofocus>취소</button> <button class="primary" value="delete">삭제</button></form></dialog>
 <dialog id="photo-viewer" class="photo-viewer"><button class="quiet photo-viewer-close" type="button" id="close-photo-viewer">닫기</button><img id="photo-viewer-image" alt="첨부 사진 크게 보기"></dialog>
 <script src="install.js?v=1" defer></script>
-<script src="drive-sync.js?v=8" defer></script>
+<script src="drive-sync.js?v=9" defer></script>
 <script src="cloud-sync.js?v=2" defer></script>
-<script src="app.js?v=24" defer></script>
+<script src="app.js?v=25" defer></script>
 </body>
 </html>

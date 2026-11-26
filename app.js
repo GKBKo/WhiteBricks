@@ -202,7 +202,7 @@ function persist(next, fromDrive = false) {
     try { if(!fromDrive) CloudSync.capture(previous,next); }
     catch(error) { localStorage.setItem(key,JSON.stringify(previous)); message(error.message,true); return false; }
     data = next;
-    if (!fromDrive) { if(CloudSync.enabled()) CloudSync.queue(); else DriveSync.queue(); }
+    if (!fromDrive) { if(CloudSync.enabled()) CloudSync.queue(); DriveSync.queue(); }
     return true;
   } catch {
     message('기록을 저장할 수 없습니다. 사진 첨부를 줄이거나 브라우저 저장 공간을 확인해 주세요.',true);
