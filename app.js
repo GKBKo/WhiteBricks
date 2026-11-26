@@ -531,7 +531,7 @@ function resetComposer() {
   $('details').open = false;
   $('cancel').textContent = '닫기';
   showComposer(false);
-  $('composer-label').textContent = '빠른 저장';
+  if ($('composer-label')) $('composer-label').textContent = '빠른 저장';
   $('save').textContent = '기록 저장';
 }
 function categoryDisplayName(name) {
@@ -669,7 +669,7 @@ function edit(entry) {
   $('details').open = true;
   $('cancel').textContent = '편집 취소';
   showComposer(true,true);
-  $('composer-label').textContent = '기록 편집';
+  if ($('composer-label')) $('composer-label').textContent = '기록 편집';
   $('save').textContent = '변경 저장';
   fields.content.focus();
   form.scrollIntoView({block:'center'});
