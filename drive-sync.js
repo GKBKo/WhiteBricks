@@ -7,7 +7,7 @@ const DriveSync = (() => {
   const mapKey = 'reading-library.drive-archive-map.v1';
   const driveBase = 'https://www.googleapis.com/drive/v3/';
   const uploadBase = 'https://www.googleapis.com/upload/drive/v3/';
-  const ROOT_FOLDER_NAME = 'A_WhiteBircks';
+  const ROOT_FOLDER_NAME = 'A_WhiteBricks';
   const USERDATA_FOLDER_NAME = 'Userdata';
 
   let app;
@@ -416,7 +416,7 @@ const DriveSync = (() => {
         updatedCount ? '수정 ' + updatedCount + '건' : '',
         deletedCount ? '삭제 ' + deletedCount + '건' : ''
       ].filter(Boolean).join(', ');
-      setStatus('A_WhiteBircks/Userdata · ' + (summary || '최신 상태') + ' (' + stamp + ')');
+      setStatus('A_WhiteBricks/Userdata · ' + (summary || '최신 상태') + ' (' + stamp + ')');
     } catch (error) {
       writeLog('Drive 저장 중단: ' + (error.message || '알 수 없는 오류'));
       setStatus(error.message || 'Drive 저장 중 오류가 발생했습니다.');
@@ -474,7 +474,7 @@ const DriveSync = (() => {
       const logPanel = document.getElementById('drive-log-panel');
       if (logPanel) logPanel.open = true;
     } else {
-      writeLog('Google Drive (A_WhiteBircks/Userdata) 연결 성공.');
+      writeLog('Google Drive (A_WhiteBricks/Userdata) 연결 성공.');
     }
     updateControls();
   }

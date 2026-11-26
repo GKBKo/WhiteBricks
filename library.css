@@ -458,3 +458,16 @@ input,select,textarea{border-radius:10px;border-color:var(--line)}
 @media(max-width:790px){
   .top .add-entry-plus{width:40px;height:40px;min-height:40px;font-size:22px}
 }
+
+/* v2.6 Clickable brand home button & category rename button */
+.brand-home-btn{
+  border:0;
+  background:transparent;
+  width:100%;
+  text-align:left;
+  border-radius:10px;
+  padding:4px 5px;
+  transition:background .12s ease;
+}
+.brand-home-btn:hover{background:var(--tint)}
+.category-manage-actions .rename-category{font-size:11px;padding:4px 8px}

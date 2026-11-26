@@ -202,7 +202,7 @@ function persist(next, fromDrive = false) {
     try { if(!fromDrive) CloudSync.capture(previous,next); }
     catch(error) { localStorage.setItem(key,JSON.stringify(previous)); message(error.message,true); return false; }
     data = next;
-    if (!fromDrive) { if(CloudSync.enabled()) CloudSync.queue(); DriveSync.queue(); }
+    if (!fromDrive) { if(CloudSync.enabled()) CloudSync.queue(); DriveSync.queue(); if(typeof LocalSync!=='undefined') LocalSync.queue(); }
     return true;
   } catch {
     message('기록을 저장할 수 없습니다. 사진 첨부를 줄이거나 브라우저 저장 공간을 확인해 주세요.',true);
@@ -584,12 +584,54 @@ function renderCategoryManager() {
     const down = button('↓',() => moveCategory(index,1),'outline');
     down.setAttribute('aria-label',name + ' 아래로 이동');
     down.disabled = index === data.categories.length - 1;
+    const rename = button('이름 변경',() => renameCategory(name),'outline rename-category');
+    rename.setAttribute('aria-label',name + ' 이름 변경');
     const remove = button('삭제',() => confirmCategoryDelete(name),'outline delete-category');
     remove.setAttribute('aria-label',name + ' 삭제');
-    actions.append(up,down,remove);
+    actions.append(up,down,rename,remove);
     row.append(label,actions);
     list.append(row);
   });
+}
+function renameCategory(oldName) {
+  const isSub = oldName.includes('/');
+  const parent = isSub ? oldName.split('/')[0] : '';
+  const currentLeaf = isSub ? oldName.split('/').slice(1).join('/') : oldName;
+  const input = window.prompt(isSub ? '하위 폴더의 새 이름을 입력하세요.' : '카테고리의 새 이름을 입력하세요.', currentLeaf);
+  if (input === null) return;
+  const rawName = input.trim().replace(/\//g, '');
+  if (!rawName) {
+    categoryStatus('카테고리 이름을 입력해 주세요.', true);
+    return;
+  }
+  const newName = isSub ? parent + '/' + rawName : rawName;
+  if (newName === oldName) return;
+  if (newName.length > 60) {
+    categoryStatus('폴더 이름이 너무 깁니다.', true);
+    return;
+  }
+  if (data.categories.includes(newName)) {
+    categoryStatus('이미 있는 카테고리 이름입니다.', true);
+    return;
+  }
+  const prefix = oldName + '/';
+  const categories = data.categories.map(item => {
+    if (item === oldName) return newName;
+    if (!isSub && item.startsWith(prefix)) return newName + '/' + item.slice(prefix.length);
+    return item;
+  });
+  const entries = data.entries.map(entry => {
+    if (entry.category === oldName) return { ...entry, category: newName };
+    if (!isSub && entry.category.startsWith(prefix)) return { ...entry, category: newName + '/' + entry.category.slice(prefix.length) };
+    return entry;
+  });
+  if (!persist({ ...data, categories, entries })) return;
+  if (category === oldName) category = newName;
+  else if (!isSub && category.startsWith(prefix)) category = newName + '/' + category.slice(prefix.length);
+  syncCategories();
+  render();
+  renderCategoryManager();
+  categoryStatus('카테고리 이름을 변경했습니다.');
 }
 function moveCategory(index,offset) {
   const target = index + offset;
@@ -1442,7 +1484,8 @@ DriveSync.init({
   }
 });
 
-CloudSync.init({get:()=>data,id:newId,validate,commit(next){if(!persist(next,true))return false;syncCategories();render();return true;}});
+CloudSync.init({get:()=>data,id:newId,validate,commit(next){if(!persist(next,true))return false;syncCategories();render();if(typeof LocalSync!=='undefined')LocalSync.queue();return true;}});
+if (typeof LocalSync !== 'undefined') LocalSync.init({get:()=>data});
 
 // 돋보기 검색 토글 기능
 const searchBoxContainer = $('search-box-container');
@@ -1550,5 +1593,13 @@ if ($('close-quick-category')) {
 if ($('quick-category-dialog')) {
   $('quick-category-dialog').addEventListener('click', e => {
     if (e.target === e.currentTarget) e.currentTarget.close();
+  });
+}
+
+// v2.6 좌측 상단 WhiteBricks 로고 클릭 시 홈(전체 기록)으로 이동
+if ($('brand-home')) {
+  $('brand-home').addEventListener('click', () => {
+    if (!form.hidden) showComposer(false);
+    navigate('all');
   });
 }
