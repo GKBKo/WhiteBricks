@@ -4,12 +4,13 @@ const LocalSync = (() => {
   const DB_NAME = 'whitebricks-local-sync';
   const STORE_NAME = 'handles';
   const HANDLE_KEY = 'root-dir';
-  const MAP_KEY = 'reading-library.local-archive-map.v1';
+  const MAP_KEY = 'reading-library.local-archive-map.v2';
   const USERDATA_DIR = 'Userdata';
 
   let app;
   let rootHandle = null;
   let running = false;
+  let needsResync = false;
   let timer;
   let archiveMap = {}; // entryId -> { pathParts: [...], fileName, hash }
 
@@ -99,16 +100,23 @@ const LocalSync = (() => {
   }
 
   function sanitizeName(raw) {
-    return String(raw || '')
+    const cleaned = String(raw || '')
+      .replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, '')
       .replace(/^https?:\/\//i, '')
       .replace(/[\\/:*?"<>|\r\n\t]+/g, '_')
       .replace(/\s+/g, ' ')
-      .replace(/^\.+|\.+$/g, '')
+      .replace(/^[. ]+|[. ]+$/g, '')
       .trim()
-      .slice(0, 120);
+      .slice(0, 110)
+      .replace(/[. ]+$/g, '');
+    // Avoid Windows reserved device names
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(cleaned)) {
+      return '_' + cleaned;
+    }
+    return cleaned;
   }
 
-  function buildFileName(entry) {
+  function buildBaseFileName(entry) {
     const prefix = formatYYMMDD(entry) + '_';
     let base = (entry.title || '').trim();
     if (!base) {
@@ -125,7 +133,7 @@ const LocalSync = (() => {
       }
     }
     const safe = sanitizeName(base) || '제목없음';
-    return prefix + safe + '.md';
+    return prefix + safe;
   }
 
   function buildPathParts(category) {
@@ -195,6 +203,38 @@ const LocalSync = (() => {
     } catch {}
   }
 
+  // Recursively remove empty folders inside Userdata that are no longer in active category paths
+  async function cleanupStaleFolders(dirHandle, currentParts, activeDirKeys) {
+    const childDirs = [];
+    let hasAnyEntry = false;
+    try {
+      for await (const [name, handle] of dirHandle.entries()) {
+        hasAnyEntry = true;
+        if (handle.kind === 'directory') {
+          childDirs.push({ name, handle });
+        }
+      }
+    } catch { return false; }
+
+    let remainingCount = 0;
+    try {
+      for await (const _ of dirHandle.entries()) remainingCount++;
+    } catch { return false; }
+
+    for (const child of childDirs) {
+      const childParts = [...currentParts, child.name];
+      const childKey = childParts.join('/');
+      const childEmpty = await cleanupStaleFolders(child.handle, childParts, activeDirKeys);
+      if (childEmpty && !activeDirKeys.has(childKey)) {
+        try {
+          await dirHandle.removeEntry(child.name);
+          remainingCount--;
+        } catch {}
+      }
+    }
+    return remainingCount === 0;
+  }
+
   async function verifyPermission(handle, interactive = false) {
     if (!handle) return false;
     const opts = { mode: 'readwrite' };
@@ -225,7 +265,11 @@ const LocalSync = (() => {
   }
 
   async function sync(interactive = false) {
-    if (!rootHandle || running) return;
+    if (!rootHandle) return;
+    if (running) {
+      needsResync = true;
+      return;
+    }
     const ok = await verifyPermission(rootHandle, interactive);
     updateButtons(ok);
     if (!ok) {
@@ -233,48 +277,91 @@ const LocalSync = (() => {
       return;
     }
     running = true;
+    needsResync = false;
     updateButtons(true);
     try {
-      // Ensure ./Userdata exists even if 0 entries
-      await rootHandle.getDirectoryHandle(USERDATA_DIR, { create: true });
+      const userdataHandle = await rootHandle.getDirectoryHandle(USERDATA_DIR, { create: true });
 
       const snapshot = app.get();
+      const categories = snapshot.categories || [];
       const entries = snapshot.entries || [];
-      const currentIds = new Set(entries.map(e => e.id));
-      let written = 0;
-      let removed = 0;
 
-      for (const entry of entries) {
-        const pathParts = buildPathParts(entry.category);
-        const fileName = buildFileName(entry);
-        const hash = computeHash(entry, pathParts, fileName);
-        const prev = archiveMap[entry.id];
-
-        if (prev && prev.hash === hash) {
-          // Verify file still exists; if user deleted Userdata manually, recreate it
-          try {
-            const checkDir = await getDirHandle(rootHandle, pathParts, false);
-            await checkDir.getFileHandle(fileName, { create: false });
-            continue;
-          } catch {}
+      // 1. Always create folders for ALL categories (even with 0 entries) + 미분류
+      const activeDirKeys = new Set([USERDATA_DIR]);
+      const allCategoryPaths = ['', ...categories];
+      for (const cat of allCategoryPaths) {
+        const parts = buildPathParts(cat);
+        try {
+          await getDirHandle(rootHandle, parts, true);
+        } catch {}
+        for (let i = 1; i <= parts.length; i++) {
+          activeDirKeys.add(parts.slice(0, i).join('/'));
         }
-
-        // If renamed or moved to another category folder, delete old file first
-        if (prev && prev.fileName && (prev.fileName !== fileName || JSON.stringify(prev.pathParts) !== JSON.stringify(pathParts))) {
-          await removeFileIfExists(rootHandle, prev.pathParts || [USERDATA_DIR, '미분류'], prev.fileName);
-        }
-
-        const dir = await getDirHandle(rootHandle, pathParts, true);
-        const fh = await dir.getFileHandle(fileName, { create: true });
-        const writable = await fh.createWritable();
-        await writable.write(buildFileContent(entry));
-        await writable.close();
-
-        archiveMap[entry.id] = { pathParts, fileName, hash };
-        written++;
       }
 
-      // Remove files for deleted entries
+      // 2. Write / update / move all entries with collision protection and per-entry error isolation
+      const currentIds = new Set(entries.map(e => e.id));
+      const usedNamesByDir = new Map();
+      let written = 0;
+      let removed = 0;
+      let failed = 0;
+
+      for (const entry of entries) {
+        try {
+          const pathParts = buildPathParts(entry.category);
+          const dirKey = pathParts.join('/');
+          for (let i = 1; i <= pathParts.length; i++) {
+            activeDirKeys.add(pathParts.slice(0, i).join('/'));
+          }
+
+          if (!usedNamesByDir.has(dirKey)) usedNamesByDir.set(dirKey, new Set());
+          const used = usedNamesByDir.get(dirKey);
+
+          const baseName = buildBaseFileName(entry);
+          let fileName = baseName + '.md';
+          let suffix = 2;
+          while (used.has(fileName.toLowerCase())) {
+            fileName = baseName + '_' + suffix + '.md';
+            suffix++;
+          }
+          used.add(fileName.toLowerCase());
+
+          const hash = computeHash(entry, pathParts, fileName);
+          const prev = archiveMap[entry.id];
+
+          let needWrite = true;
+          if (prev && prev.hash === hash && prev.fileName === fileName && JSON.stringify(prev.pathParts) === JSON.stringify(pathParts)) {
+            try {
+              const checkDir = await getDirHandle(rootHandle, pathParts, false);
+              await checkDir.getFileHandle(fileName, { create: false });
+              needWrite = false;
+            } catch {
+              needWrite = true;
+            }
+          }
+
+          if (!needWrite) continue;
+
+          // If renamed or moved to another category folder, delete old file first
+          if (prev && prev.fileName && (prev.fileName !== fileName || JSON.stringify(prev.pathParts) !== JSON.stringify(pathParts))) {
+            await removeFileIfExists(rootHandle, prev.pathParts || [USERDATA_DIR, '미분류'], prev.fileName);
+          }
+
+          const dir = await getDirHandle(rootHandle, pathParts, true);
+          const fh = await dir.getFileHandle(fileName, { create: true });
+          const writable = await fh.createWritable();
+          await writable.write(buildFileContent(entry));
+          await writable.close();
+
+          archiveMap[entry.id] = { pathParts, fileName, hash };
+          written++;
+        } catch (entryErr) {
+          failed++;
+          console.warn('LocalSync entry failed:', entry?.id, entry?.title, entryErr);
+        }
+      }
+
+      // 3. Remove files for deleted entries
       for (const [entryId, prev] of Object.entries({ ...archiveMap })) {
         if (!currentIds.has(entryId)) {
           if (prev?.fileName) {
@@ -286,17 +373,28 @@ const LocalSync = (() => {
       }
       saveMap();
 
+      // 4. Clean up empty old folders (from renamed or deleted categories)
+      await cleanupStaleFolders(userdataHandle, [USERDATA_DIR], activeDirKeys);
+
       const stamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       const detail = [
         written ? '저장/갱신 ' + written + '건' : '',
-        removed ? '삭제 ' + removed + '건' : ''
+        removed ? '삭제 ' + removed + '건' : '',
+        failed ? '실패 ' + failed + '건' : ''
       ].filter(Boolean).join(', ');
-      setStatus(rootHandle.name + '/Userdata · ' + (detail || '최신 상태 (' + entries.length + '건)') + ' · ' + stamp);
+      setStatus(
+        rootHandle.name + '/Userdata · ' + (detail || '최신 상태 (' + entries.length + '건)') + ' · ' + stamp,
+        failed > 0
+      );
     } catch (err) {
       setStatus('폴더 저장 오류: ' + (err?.message || '권한을 확인해 주세요.'), true);
     } finally {
       running = false;
       updateButtons(true);
+      if (needsResync) {
+        needsResync = false;
+        setTimeout(() => void sync(false), 300);
+      }
     }
   }
 
@@ -306,7 +404,6 @@ const LocalSync = (() => {
       return;
     }
     try {
-      // If handle exists but lacks permission, request permission first unless already granted
       if (rootHandle && !(await verifyPermission(rootHandle, false))) {
         const granted = await verifyPermission(rootHandle, true);
         if (granted) {
@@ -317,7 +414,6 @@ const LocalSync = (() => {
       const picked = await window.showDirectoryPicker({ id: 'whitebricks-userdata', mode: 'readwrite' });
       rootHandle = picked;
       await saveHandle(picked);
-      // Reset map when switching folder so all entries get written cleanly
       archiveMap = {};
       saveMap();
       setStatus(picked.name + '/Userdata 폴더에 전체 기록을 저장하는 중…');
@@ -330,8 +426,12 @@ const LocalSync = (() => {
 
   function queue() {
     if (!rootHandle) return;
+    if (running) {
+      needsResync = true;
+      return;
+    }
     clearTimeout(timer);
-    timer = setTimeout(() => void sync(false), 500);
+    timer = setTimeout(() => void sync(false), 450);
   }
 
   async function init(callbacks) {
@@ -340,7 +440,12 @@ const LocalSync = (() => {
     if (!el('local-dir-panel')) return;
 
     el('local-dir-connect')?.addEventListener('click', () => void pickFolder());
-    el('local-dir-now')?.addEventListener('click', () => void sync(true));
+    el('local-dir-now')?.addEventListener('click', () => {
+      // Force full verification on manual click
+      archiveMap = {};
+      saveMap();
+      void sync(true);
+    });
     el('local-dir-disconnect')?.addEventListener('click', async () => {
       rootHandle = null;
       await clearHandle();

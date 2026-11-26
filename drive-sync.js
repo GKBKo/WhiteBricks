@@ -375,22 +375,35 @@ const DriveSync = (() => {
     return 'created';
   }
 
+  let needsResync = false;
   async function sync() {
-    if (!token || Date.now() >= expiresAt || running || connecting) return;
+    if (!token || Date.now() >= expiresAt || connecting) return;
+    if (running) { needsResync = true; return; }
     running = true;
+    needsResync = false;
     updateControls();
     try {
       await ensureUserdataRoot();
       const snapshot = app.get();
+      const categories = snapshot.categories || [];
       const entries = snapshot.entries || [];
       const currentIds = new Set(entries.map(e => e.id));
       let createdCount = 0;
       let updatedCount = 0;
 
+      // Always ensure all category folders exist even with 0 entries
+      for (const cat of ['', ...categories]) {
+        try { await ensureCategoryFolder(cat); } catch {}
+      }
+
       for (const entry of entries) {
-        const res = await uploadOrUpdateEntry(entry);
-        if (res === 'created') createdCount++;
-        else if (res === 'updated') updatedCount++;
+        try {
+          const res = await uploadOrUpdateEntry(entry);
+          if (res === 'created') createdCount++;
+          else if (res === 'updated') updatedCount++;
+        } catch (e) {
+          writeLog('개별 기록 저장 실패 (' + (entry.title || entry.id) + '): ' + (e.message || '오류'));
+        }
       }
 
       // Trash files on Drive for deleted entries
@@ -423,6 +436,10 @@ const DriveSync = (() => {
     } finally {
       running = false;
       updateControls();
+      if (needsResync) {
+        needsResync = false;
+        setTimeout(() => void sync(), 400);
+      }
     }
   }
 
