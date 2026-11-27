@@ -512,12 +512,14 @@ input,select,textarea{border-radius:10px;border-color:var(--line)}
   box-shadow:0 0 0 2px #22c55e30;
 }
 
-/* v2.10 Category manager parent-select 50% width & expanded folder name input on mobile/desktop */
+/* v2.11 Category manager: parent-select +20% width, centered new-category input, right-aligned add button */
 .category-manager .new-category.new-category-tree{
   display:grid!important;
-  grid-template-columns:108px minmax(0,1fr) auto!important;
+  grid-template-columns:130px minmax(0,1fr) auto!important;
   align-items:center;
   gap:6px;
+  width:100%;
+  max-width:none!important;
   margin:0 0 12px;
 }
 .category-manager .new-category.new-category-tree select{
@@ -535,13 +537,16 @@ input,select,textarea{border-radius:10px;border-color:var(--line)}
   padding:7px 9px;
 }
 .category-manager .new-category.new-category-tree button{
+  justify-self:end;
   white-space:nowrap;
   flex-shrink:0;
 }
 @media(max-width:790px){
   .category-manager .new-category.new-category-tree{
-    grid-template-columns:92px minmax(0,1fr) auto!important;
+    grid-template-columns:110px minmax(0,1fr) auto!important;
     gap:5px;
+    width:100%;
+    max-width:none!important;
   }
   .category-manager .new-category.new-category-tree select{
     font-size:12px;
