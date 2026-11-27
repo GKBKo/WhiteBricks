@@ -142,7 +142,9 @@ const LocalSync = (() => {
       }
     }
     const safe = sanitizeName(base) || '제목없음';
-    return prefix + safe;
+    const chars = Array.from(safe);
+    const trimmed = chars.length > 30 ? chars.slice(0, 30).join('').trimEnd() + '…' : safe;
+    return prefix + trimmed;
   }
 
   function buildPathParts(category) {

@@ -552,7 +552,7 @@ function syncCategories() {
     const topFolders = data.categories.filter(name => !name.includes('/'));
     parentSelect.replaceChildren(
       new Option('최상위 폴더', ''),
-      ...topFolders.map(name => new Option(name + ' (하위 폴더로 추가)', name))
+      ...topFolders.map(name => new Option(name, name))
     );
     parentSelect.value = topFolders.includes(prevParent) ? prevParent : '';
   }
@@ -697,9 +697,15 @@ function navButton(label, selected, action, icon, count) {
   el.setAttribute('aria-pressed',String(selected));
   return el;
 }
+function truncateTitle(text, max = 30) {
+  const clean = String(text || '').trim();
+  const chars = Array.from(clean);
+  return chars.length > max ? chars.slice(0, max).join('').trimEnd() + '…' : clean;
+}
 function titleOf(entry) {
-  return entry.title || entry.content.split('\n').find(line => line.trim())?.trim().slice(0,90) ||
-    (entry.url ? new URL(entry.url).hostname + ' · 저장한 링크' : entry.thought.slice(0,90) || '기록');
+  const raw = entry.title || entry.content.split('\n').find(line => line.trim())?.trim() ||
+    (entry.url ? new URL(entry.url).hostname + ' · 저장한 링크' : entry.thought || '기록');
+  return truncateTitle(raw, 30);
 }
 function edit(entry) {
   editId = entry.id;
@@ -1228,7 +1234,7 @@ form.addEventListener('submit',event => {
   const previous = data.entries.find(entry => entry.id === editId);
   const entry = {
     id:previous?.id || newId(), created:previous?.created || new Date().toISOString(),
-    title:get('title'), content, url, type:get('type') || autoType,
+    title:truncateTitle(get('title'), 30), content, url, type:get('type') || autoType,
     category:get('category'), priority:get('priority'), date:get('date'), published:get('published'),
     source:get('source'), thought:get('thought'),images:[...draftImages]
   };

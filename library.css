@@ -511,3 +511,44 @@ input,select,textarea{border-radius:10px;border-color:var(--line)}
   background:#22c55e;
   box-shadow:0 0 0 2px #22c55e30;
 }
+
+/* v2.10 Category manager parent-select 50% width & expanded folder name input on mobile/desktop */
+.category-manager .new-category.new-category-tree{
+  display:grid!important;
+  grid-template-columns:108px minmax(0,1fr) auto!important;
+  align-items:center;
+  gap:6px;
+  margin:0 0 12px;
+}
+.category-manager .new-category.new-category-tree select{
+  width:100%;
+  min-width:0;
+  padding:7px 6px;
+  font-size:12px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.category-manager .new-category.new-category-tree input{
+  width:100%;
+  min-width:0;
+  padding:7px 9px;
+}
+.category-manager .new-category.new-category-tree button{
+  white-space:nowrap;
+  flex-shrink:0;
+}
+@media(max-width:790px){
+  .category-manager .new-category.new-category-tree{
+    grid-template-columns:92px minmax(0,1fr) auto!important;
+    gap:5px;
+  }
+  .category-manager .new-category.new-category-tree select{
+    font-size:12px;
+    padding:8px 4px;
+  }
+  .category-manager .new-category.new-category-tree input{
+    font-size:15px;
+    padding:8px 9px;
+  }
+}

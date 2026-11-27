@@ -264,7 +264,9 @@ const DriveSync = (() => {
       }
     }
     const safe = sanitizeFilename(base) || '제목없음';
-    return prefix + safe + '.md';
+    const chars = Array.from(safe);
+    const trimmed = chars.length > 30 ? chars.slice(0, 30).join('').trimEnd() + '…' : safe;
+    return prefix + trimmed + '.md';
   }
 
   function buildFileContent(entry) {
