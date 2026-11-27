@@ -557,3 +557,11 @@ input,select,textarea{border-radius:10px;border-color:var(--line)}
     padding:8px 9px;
   }
 }
+
+/* v2.12 Fix mobile sidebar z-index above tile 3-dot menus & hide duplicate mobile top-view-title */
+@media(max-width:790px){
+  .shelf-shade{z-index:40!important}
+  .sidebar{z-index:50!important}
+  .shell[data-menu=true] .tile-menu-wrap{visibility:hidden!important;pointer-events:none!important}
+  .top-view-title{display:none!important}
+}

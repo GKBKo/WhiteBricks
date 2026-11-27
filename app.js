@@ -697,7 +697,7 @@ function navButton(label, selected, action, icon, count) {
   el.setAttribute('aria-pressed',String(selected));
   return el;
 }
-function truncateTitle(text, max = 30) {
+function truncateTitle(text, max = 50) {
   const clean = String(text || '').trim();
   const chars = Array.from(clean);
   return chars.length > max ? chars.slice(0, max).join('').trimEnd() + '…' : clean;
@@ -705,7 +705,7 @@ function truncateTitle(text, max = 30) {
 function titleOf(entry) {
   const raw = entry.title || entry.content.split('\n').find(line => line.trim())?.trim() ||
     (entry.url ? new URL(entry.url).hostname + ' · 저장한 링크' : entry.thought || '기록');
-  return truncateTitle(raw, 30);
+  return truncateTitle(raw, 50);
 }
 function edit(entry) {
   editId = entry.id;
@@ -1049,7 +1049,8 @@ function render() {
   }
   $('view-title').textContent = category || headings[view];
   if($('mobile-current-category')) $('mobile-current-category').textContent = category || headings[view];
-  $('views').replaceChildren(...Object.entries(headings).map(([name,label]) => navButton(label, view === name,() => navigate(name),name)));
+  const uncategorizedCount = data.entries.filter(entry => !entry.category).length;
+  $('views').replaceChildren(...Object.entries(headings).map(([name,label]) => navButton(label, view === name,() => navigate(name),name, name === 'uncategorized' ? uncategorizedCount : undefined)));
   const counts = new Map();
   for (const entry of data.entries) {
     if (entry.category) {
@@ -1234,7 +1235,7 @@ form.addEventListener('submit',event => {
   const previous = data.entries.find(entry => entry.id === editId);
   const entry = {
     id:previous?.id || newId(), created:previous?.created || new Date().toISOString(),
-    title:truncateTitle(get('title'), 30), content, url, type:get('type') || autoType,
+    title:truncateTitle(get('title'), 50), content, url, type:get('type') || autoType,
     category:get('category'), priority:get('priority'), date:get('date'), published:get('published'),
     source:get('source'), thought:get('thought'),images:[...draftImages]
   };

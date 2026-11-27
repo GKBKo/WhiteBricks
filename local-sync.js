@@ -143,7 +143,7 @@ const LocalSync = (() => {
     }
     const safe = sanitizeName(base) || '제목없음';
     const chars = Array.from(safe);
-    const trimmed = chars.length > 30 ? chars.slice(0, 30).join('').trimEnd() + '…' : safe;
+    const trimmed = chars.length > 50 ? chars.slice(0, 50).join('').trimEnd() + '…' : safe;
     return prefix + trimmed;
   }
 
