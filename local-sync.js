@@ -16,6 +16,15 @@ const LocalSync = (() => {
 
   const el = id => document.getElementById(id);
 
+  function setDot(state) {
+    const dot = el('local-dir-dot');
+    if (!dot) return;
+    dot.dataset.state = state;
+    const label = state === 'connected' ? '연결됨' : state === 'connecting' ? '연결중' : '연결 안됨';
+    dot.title = label;
+    dot.setAttribute('aria-label', label);
+  }
+
   function setStatus(text, isError = false) {
     const s = el('local-dir-status');
     if (s) {
@@ -252,12 +261,14 @@ const LocalSync = (() => {
     if (!connectBtn) return;
     const supported = typeof window.showDirectoryPicker === 'function';
     if (!supported) {
+      setDot('disconnected');
       connectBtn.disabled = true;
       if (syncBtn) syncBtn.disabled = true;
       if (discBtn) discBtn.disabled = true;
       setStatus('이 브라우저(모바일 등)에서는 PC 로컬 폴더 직접 연결을 지원하지 않습니다.');
       return;
     }
+    setDot(running ? 'connecting' : (rootHandle && hasPerm ? 'connected' : 'disconnected'));
     connectBtn.disabled = running;
     connectBtn.textContent = rootHandle ? (hasPerm ? '폴더 변경' : '권한 허용 및 연결') : 'A_WhiteBricks 폴더 선택';
     if (syncBtn) syncBtn.disabled = !rootHandle || running;

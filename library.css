@@ -471,3 +471,43 @@ input,select,textarea{border-radius:10px;border-color:var(--line)}
 }
 .brand-home-btn:hover{background:var(--tint)}
 .category-manage-actions .rename-category{font-size:11px;padding:4px 8px}
+
+/* v2.9 Collapsed sync panels with green/red status dots */
+.drive-panel>summary.sync-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  list-style:none;
+}
+.drive-panel>summary.sync-summary::-webkit-details-marker{display:none}
+.sync-summary-title{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+.sync-summary-title::before{
+  content:'▸';
+  font-size:11px;
+  color:var(--muted);
+  transition:transform .15s ease;
+  flex-shrink:0;
+}
+.drive-panel[open]>summary.sync-summary .sync-summary-title::before{
+  transform:rotate(90deg);
+}
+.sync-dot{
+  width:9px;
+  height:9px;
+  border-radius:999px;
+  flex-shrink:0;
+  background:#ef4444;
+  box-shadow:0 0 0 2px #ef444426;
+  transition:background .15s ease, box-shadow .15s ease;
+}
+.sync-dot[data-state=connected],
+.sync-dot[data-state=connecting]{
+  background:#22c55e;
+  box-shadow:0 0 0 2px #22c55e30;
+}

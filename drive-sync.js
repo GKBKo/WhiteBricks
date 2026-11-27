@@ -86,8 +86,18 @@ const DriveSync = (() => {
     }
   }
 
+  function setDot(state) {
+    const dot = document.getElementById('drive-dot');
+    if (!dot) return;
+    dot.dataset.state = state;
+    const label = state === 'connected' ? '연결됨' : state === 'connecting' ? '연결중' : '연결 안됨';
+    dot.title = label;
+    dot.setAttribute('aria-label', label);
+  }
+
   function updateControls() {
     const connected = !!token && Date.now() < expiresAt;
+    setDot(connecting || running ? 'connecting' : (connected && !!userdataFolderId ? 'connected' : 'disconnected'));
     const connectBtn = document.getElementById('drive-connect');
     const nowBtn = document.getElementById('drive-now');
     const discBtn = document.getElementById('drive-disconnect');

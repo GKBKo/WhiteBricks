@@ -6,6 +6,14 @@ const CloudSync = (() => {
   const stable=value=>JSON.stringify(value, function(k,v){return v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v;});
   let enabled=false, initial=null, cloud={entries:{},categories:{}}, queue={entries:{},categories:{}}, bound='';
   const el=id=>document.getElementById(id);
+  function setDot(state) {
+    const dot = el('cloud-dot');
+    if (!dot) return;
+    dot.dataset.state = state;
+    const label = state === 'connected' ? '연결됨' : state === 'connecting' ? '연결중' : '연결 안됨';
+    dot.title = label;
+    dot.setAttribute('aria-label', label);
+  }
   function status(text,error=false) { el('cloud-status').textContent=text; el('cloud-status').classList.toggle('error',error); }
   function errorText(e) {
     const code=e?.code||'';
@@ -119,20 +127,21 @@ const CloudSync = (() => {
   function stop() { if(unsub)unsub();if(infoUnsub)infoUnsub();unsub=null;infoUnsub=null;ready=false;connected=false; }
   async function start(config) {
     if(sdk) return;
-    status('실시간 동기화 도구를 준비하는 중…');
+    setDot('connecting');status('실시간 동기화 도구를 준비하는 중…');
     const modules=await Promise.all(['app','auth','database'].map(n=>import('https://www.gstatic.com/firebasejs/12.5.0/firebase-'+n+'.js')));
     sdk=Object.assign({},...modules);
     const instance=sdk.initializeApp(config,'reading-library'); auth=sdk.getAuth(instance);db=sdk.getDatabase(instance);
     await sdk.setPersistence(auth,sdk.browserLocalPersistence);
     sdk.onAuthStateChanged(auth,u=>{
       stop();user=u;
-      if(!u) {status('설정 완료 · Google 로그인 후 기기 사이에서 자동 동기화됩니다.');el('cloud-import').disabled=true;return;}
+      if(!u) {setDot('disconnected');status('설정 완료 · Google 로그인 후 기기 사이에서 자동 동기화됩니다.');el('cloud-import').disabled=true;return;}
       bound=u.uid;localStorage.setItem(K+'bound',bound);
       queue=JSON.parse(localStorage.getItem(K+'queue.'+bound)||'{"entries":{},"categories":{}}');
       // Preserve the old library before the first remote view replaces it.
       initial=app.get();if(!localStorage.getItem(K+'before-cloud')) localStorage.setItem(K+'before-cloud',JSON.stringify(initial));
       infoUnsub=sdk.onValue(sdk.ref(db,'.info/connected'),s=>{
         connected=s.val()===true;
+        setDot(connected?'connected':'disconnected');
         status(connected?u.email+' · 서버에 연결됨':u.email+' · 오프라인, 변경 사항은 재연결 시 전송됩니다.');
         if(connected)void flush();
       });
@@ -147,7 +156,7 @@ const CloudSync = (() => {
           status(u.email+' · 실시간 연결 · 클라우드 '+count+'건'+(!count?' · 기존 기록은 가져오기 버튼으로 옮기세요.':''));
           void flush();
         } catch(e) {status(errorText(e),true);}
-      },e=>{ready=false;status(errorText(e),true);});
+      },e=>{ready=false;setDot('disconnected');status(errorText(e),true);});
     });
   }
   async function migrate() {
@@ -217,7 +226,7 @@ const CloudSync = (() => {
       if(el('cloud-config')) el('cloud-config').value = JSON.stringify(c, null, 2);
       bound = localStorage.getItem(K+'bound') || '';
       queue = JSON.parse(localStorage.getItem(K+'queue.'+bound) || '{"entries":{},"categories":{}}');
-      void start(c).catch(e => status(errorText(e), true));
+      void start(c).catch(e => { setDot('disconnected'); status(errorText(e), true); });
     } catch(e) {
       status(errorText(e), true);
     }
